@@ -1,0 +1,68 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - run: python -m build
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  npm:
+    runs-on: ubuntu-latest
+    needs: pypi
+    defaults:
+      run:
+        working-directory: npm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: "https://registry.npmjs.org"
+      - name: Sync version from tag
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          npm version "$VERSION" --no-git-tag-version
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  homebrew:
+    runs-on: ubuntu-latest
+    needs: pypi
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update Homebrew formula SHA256
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          URL="https://files.pythonhosted.org/packages/source/m/md-to-adf/md_to_adf-${VERSION}.tar.gz"
+          # Wait for PyPI to propagate
+          for i in 1 2 3 4 5; do
+            if curl -sfL "$URL" -o /tmp/md_to_adf.tar.gz; then
+              break
+            fi
+            echo "Waiting for PyPI... (attempt $i)"
+            sleep 30
+          done
+          SHA=$(shasum -a 256 /tmp/md_to_adf.tar.gz | awk '{print $1}')
+          sed -i "s|md_to_adf-.*\.tar\.gz|md_to_adf-${VERSION}.tar.gz|" homebrew/Formula/md-to-adf.rb
+          sed -i "0,/sha256 \".*\"/s|sha256 \".*\"|sha256 \"${SHA}\"|" homebrew/Formula/md-to-adf.rb
+      - name: Commit and push formula update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add homebrew/Formula/md-to-adf.rb
+          git diff --cached --quiet || git commit -m "chore: update Homebrew formula for ${GITHUB_REF#refs/tags/}"
+          git push origin HEAD:main

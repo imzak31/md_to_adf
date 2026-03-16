@@ -1,0 +1,17 @@
+{
+  "name": "md2adf",
+  "version": "1.0.0",
+  "description": "Convert Markdown to Atlassian Document Format (ADF) — npm wrapper for Python CLI",
+  "bin": {
+    "md-to-adf": "./bin/md-to-adf.js"
+  },
+  "keywords": ["markdown", "adf", "confluence", "atlassian"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/imzak31/md-to-adf"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}

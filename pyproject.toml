@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "md-to-adf"
+version = "1.0.0"
+description = "Convert Markdown to Atlassian Document Format (ADF) and upload to Confluence"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [{ name = "Adrian Centeno", email = "adriandenb@gmail.com" }]
+keywords = ["markdown", "adf", "confluence", "atlassian"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: Markup",
+]
+dependencies = [
+    "tomli>=2.0; python_version<'3.11'",
+    "tomli_w>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov"]
+all = []
+
+[project.scripts]
+md-to-adf = "md_to_adf.cli.main:main"
+
+[project.urls]
+Homepage = "https://github.com/imzak31/md-to-adf"
+Issues = "https://github.com/imzak31/md-to-adf/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
