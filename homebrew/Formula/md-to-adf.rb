@@ -4,7 +4,7 @@ class MdToAdf < Formula
   desc "Convert Markdown to Atlassian Document Format (ADF) and upload to Confluence"
   homepage "https://github.com/imzak31/md-to-adf"
   url "https://files.pythonhosted.org/packages/source/m/md-to-adf/md_to_adf-1.0.0.tar.gz"
-  sha256 "28c2fcde466fbb79543743b9e9f317d46b1288cdea5747cfd512c5aee7000b97"
+  sha256 "e4385c8735179ee12846fd4108c578d7fef7a306546c96151aafd3412f1660fb"
   license "MIT"
 
   depends_on "python@3.12"
