@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "md-to-adf"
-version = "1.0.0"
+version = "1.0.1"
 description = "Convert Markdown to Atlassian Document Format (ADF) and upload to Confluence"
 readme = "README.md"
 license = "MIT"

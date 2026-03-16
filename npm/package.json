@@ -1,6 +1,6 @@
 {
   "name": "md2adf",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Convert Markdown to Atlassian Document Format (ADF) — npm wrapper for Python CLI",
   "bin": {
     "md-to-adf": "./bin/md-to-adf.js"
