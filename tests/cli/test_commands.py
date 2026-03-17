@@ -60,3 +60,17 @@ def test_cmd_validate_detects_issues():
     adf_file.close()
     result = cmd_validate(adf_file.name, is_adf=True)
     assert result != 0
+
+
+def test_debug_flag_exists():
+    from md_to_adf.cli.main import _build_parser
+    parser = _build_parser()
+    args = parser.parse_args(["--debug", "convert", "test.md"])
+    assert args.debug is True
+
+
+def test_debug_flag_default_false():
+    from md_to_adf.cli.main import _build_parser
+    parser = _build_parser()
+    args = parser.parse_args(["convert", "test.md"])
+    assert args.debug is False

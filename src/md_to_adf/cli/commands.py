@@ -6,23 +6,23 @@ import sys
 from md_to_adf.core.parser import convert
 from md_to_adf.core.validator import validate
 from md_to_adf.mermaid import process_mermaid_blocks
+from md_to_adf.cli.errors import ConfigError, NotFoundError
 
 
 def _read_file(path):
-    """Read a file and return its contents, or print an error and return None."""
+    """Read a file and return its contents, raising on error."""
     try:
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
+    except FileNotFoundError:
+        raise NotFoundError(f"File not found: {path}", hint="Check the file path")
     except OSError as e:
-        print(f"Error reading file '{path}': {e}", file=sys.stderr)
-        return None
+        raise ConfigError(f"Cannot read file '{path}': {e}")
 
 
 def _convert_md(input_path, mermaid_strategy="auto", mermaid_format="png", mermaid_theme="default"):
-    """Read a markdown file, convert to ADF, and process mermaid blocks. Returns (adf_doc, exit_code)."""
+    """Read a markdown file, convert to ADF, and process mermaid blocks. Returns adf_doc."""
     content = _read_file(input_path)
-    if content is None:
-        return None, 1
 
     adf_doc = convert(content)
     adf_doc = process_mermaid_blocks(
@@ -31,21 +31,17 @@ def _convert_md(input_path, mermaid_strategy="auto", mermaid_format="png", merma
         output_format=mermaid_format,
         theme=mermaid_theme,
     )
-    return adf_doc, 0
+    return adf_doc
 
 
 def _require_credentials(domain, email, token):
-    """Check that Confluence credentials are provided. Returns 1 on error, None if OK."""
+    """Check that Confluence credentials are provided. Raises ConfigError if any are missing."""
     if not domain:
-        print("Error: Confluence domain is required (--domain or MD_TO_ADF_DOMAIN).", file=sys.stderr)
-        return 1
+        raise ConfigError("Confluence domain is required", hint="Set --domain, MD_TO_ADF_DOMAIN, or run 'md-to-adf init'")
     if not email:
-        print("Error: Confluence email is required (--email or MD_TO_ADF_EMAIL).", file=sys.stderr)
-        return 1
+        raise ConfigError("Confluence email is required", hint="Set --email, MD_TO_ADF_EMAIL, or run 'md-to-adf init'")
     if not token:
-        print("Error: Confluence API token is required (--token or MD_TO_ADF_TOKEN).", file=sys.stderr)
-        return 1
-    return None
+        raise ConfigError("Confluence API token is required", hint="Set --token, MD_TO_ADF_TOKEN, or run 'md-to-adf init'")
 
 
 def _build_client(domain, email, token):
@@ -67,9 +63,7 @@ def cmd_convert(
     mermaid_theme="default",
 ):
     """Read a Markdown file, convert to ADF, and write JSON to file or stdout."""
-    adf_doc, err = _convert_md(input_path, mermaid_strategy, mermaid_format, mermaid_theme)
-    if err:
-        return err
+    adf_doc = _convert_md(input_path, mermaid_strategy, mermaid_format, mermaid_theme)
 
     if validate_output:
         errors = validate(adf_doc)
@@ -101,8 +95,6 @@ def cmd_validate(input_path, is_adf=False):
     treat_as_adf = is_adf or input_path.endswith(".json")
 
     content = _read_file(input_path)
-    if content is None:
-        return 1
 
     if treat_as_adf:
         try:
@@ -139,9 +131,7 @@ def cmd_upload(
     mermaid_theme="default",
 ):
     """Convert and upload a Markdown file to Confluence."""
-    adf_doc, err = _convert_md(input_path, mermaid_strategy, mermaid_format, mermaid_theme)
-    if err:
-        return err
+    adf_doc = _convert_md(input_path, mermaid_strategy, mermaid_format, mermaid_theme)
 
     errors = validate(adf_doc)
     if errors:
@@ -150,28 +140,20 @@ def cmd_upload(
             print(f"  - {e}", file=sys.stderr)
         return 1
 
-    cred_err = _require_credentials(domain, email, token)
-    if cred_err:
-        return cred_err
+    _require_credentials(domain, email, token)
     if not title:
-        print("Error: Page title is required (--title).", file=sys.stderr)
-        return 1
+        raise ConfigError("Page title is required", hint="Pass --title")
 
     client = _build_client(domain, email, token)
 
-    try:
-        if page_id:
-            result = client.update_page(adf_doc, page_id, title)
-            action = "updated"
-        else:
-            if not space_key:
-                print("Error: Space key is required when creating a new page (--space).", file=sys.stderr)
-                return 1
-            result = client.create_page(adf_doc, space_key, title, parent_id=parent_id)
-            action = "created"
-    except Exception as e:
-        print(f"Error uploading to Confluence: {e}", file=sys.stderr)
-        return 1
+    if page_id:
+        result = client.update_page(adf_doc, page_id, title)
+        action = "updated"
+    else:
+        if not space_key:
+            raise ConfigError("Space key is required when creating a new page", hint="Pass --space")
+        result = client.create_page(adf_doc, space_key, title, parent_id=parent_id)
+        action = "created"
 
     # Prefer the webui link from the API response; fall back to constructed URL
     web_link = result.get("_links", {}).get("webui", "")
@@ -185,17 +167,11 @@ def cmd_upload(
 
 def cmd_spaces(domain, email, token):
     """List available Confluence spaces."""
-    cred_err = _require_credentials(domain, email, token)
-    if cred_err:
-        return cred_err
+    _require_credentials(domain, email, token)
 
     client = _build_client(domain, email, token)
 
-    try:
-        data = client.list_spaces()
-    except Exception as e:
-        print(f"Error listing spaces: {e}", file=sys.stderr)
-        return 1
+    data = client.list_spaces()
 
     results = data.get("results", [])
     if not results:

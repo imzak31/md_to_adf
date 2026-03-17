@@ -2,9 +2,11 @@
 
 import argparse
 import sys
+import traceback
 
 from md_to_adf import __version__
 from md_to_adf.cli.config import load_config, get_config_value
+from md_to_adf.cli.errors import MdToAdfError
 
 
 def _add_mermaid_arg(parser):
@@ -28,6 +30,7 @@ def _build_parser():
         action="version",
         version=f"%(prog)s {__version__}",
     )
+    parser.add_argument("--debug", action="store_true", help="Show full tracebacks on error")
 
     subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
 
@@ -185,79 +188,96 @@ def main():
         parser.print_help()
         return 0
 
+    debug = getattr(args, "debug", False)
     config = load_config()
 
-    # ── init ────────────────────────────────────────────────────────────────
-    if args.command == "init":
-        try:
-            from md_to_adf.cli.wizard import run_wizard  # noqa: F401 — Task 9
-        except ImportError:
-            print(
-                "Error: The setup wizard is not yet available. "
-                "Please configure ~/.md-to-adf/config.toml manually.",
-                file=sys.stderr,
-            )
-            return 1
-        return run_wizard(token_mode=args.token, oauth_mode=args.oauth) or 0
+    try:
+        # ── init ────────────────────────────────────────────────────────────────
+        if args.command == "init":
+            try:
+                from md_to_adf.cli.wizard import run_wizard  # noqa: F401 — Task 9
+            except ImportError:
+                print(
+                    "Error: The setup wizard is not yet available. "
+                    "Please configure ~/.md-to-adf/config.toml manually.",
+                    file=sys.stderr,
+                )
+                return 1
+            return run_wizard(token_mode=args.token, oauth_mode=args.oauth) or 0
 
-    # ── convert ─────────────────────────────────────────────────────────────
-    if args.command == "convert":
-        from md_to_adf.cli.commands import cmd_convert
+        # ── convert ─────────────────────────────────────────────────────────────
+        if args.command == "convert":
+            from md_to_adf.cli.commands import cmd_convert
 
-        mermaid_strategy = get_config_value(
-            config, "mermaid", "strategy", cli_value=args.mermaid
-        ) or "auto"
+            mermaid_strategy = get_config_value(
+                config, "mermaid", "strategy", cli_value=args.mermaid
+            ) or "auto"
 
-        return cmd_convert(
-            input_path=args.input,
-            output_path=args.output,
-            validate_output=args.validate,
-            compact=args.compact,
-            mermaid_strategy=mermaid_strategy,
-        ) or 0
+            return cmd_convert(
+                input_path=args.input,
+                output_path=args.output,
+                validate_output=args.validate,
+                compact=args.compact,
+                mermaid_strategy=mermaid_strategy,
+            ) or 0
 
-    # ── upload ──────────────────────────────────────────────────────────────
-    if args.command == "upload":
-        from md_to_adf.cli.commands import cmd_upload
+        # ── upload ──────────────────────────────────────────────────────────────
+        if args.command == "upload":
+            from md_to_adf.cli.commands import cmd_upload
 
-        domain = get_config_value(config, "confluence", "domain", cli_value=args.domain)
-        email = get_config_value(config, "confluence", "email", cli_value=args.email)
-        token = get_config_value(config, "confluence", "token", cli_value=args.token)
-        space_key = get_config_value(config, "confluence", "space_key", cli_value=args.space)
-        mermaid_strategy = get_config_value(
-            config, "mermaid", "strategy", cli_value=args.mermaid
-        ) or "auto"
+            domain = get_config_value(config, "confluence", "domain", cli_value=args.domain)
+            email = get_config_value(config, "confluence", "email", cli_value=args.email)
+            token = get_config_value(config, "confluence", "token", cli_value=args.token)
+            space_key = get_config_value(config, "confluence", "space_key", cli_value=args.space)
+            mermaid_strategy = get_config_value(
+                config, "mermaid", "strategy", cli_value=args.mermaid
+            ) or "auto"
 
-        return cmd_upload(
-            input_path=args.input,
-            domain=domain,
-            email=email,
-            token=token,
-            space_key=space_key,
-            title=args.title,
-            parent_id=args.parent_id,
-            page_id=args.page_id,
-            mermaid_strategy=mermaid_strategy,
-        ) or 0
+            return cmd_upload(
+                input_path=args.input,
+                domain=domain,
+                email=email,
+                token=token,
+                space_key=space_key,
+                title=args.title,
+                parent_id=args.parent_id,
+                page_id=args.page_id,
+                mermaid_strategy=mermaid_strategy,
+            ) or 0
 
-    # ── validate ─────────────────────────────────────────────────────────────
-    if args.command == "validate":
-        from md_to_adf.cli.commands import cmd_validate
+        # ── validate ─────────────────────────────────────────────────────────────
+        if args.command == "validate":
+            from md_to_adf.cli.commands import cmd_validate
 
-        return cmd_validate(args.input) or 0
+            return cmd_validate(args.input) or 0
 
-    # ── spaces ───────────────────────────────────────────────────────────────
-    if args.command == "spaces":
-        from md_to_adf.cli.commands import cmd_spaces
+        # ── spaces ───────────────────────────────────────────────────────────────
+        if args.command == "spaces":
+            from md_to_adf.cli.commands import cmd_spaces
 
-        domain = get_config_value(config, "confluence", "domain", cli_value=args.domain)
-        email = get_config_value(config, "confluence", "email", cli_value=args.email)
-        token = get_config_value(config, "confluence", "token", cli_value=args.token)
+            domain = get_config_value(config, "confluence", "domain", cli_value=args.domain)
+            email = get_config_value(config, "confluence", "email", cli_value=args.email)
+            token = get_config_value(config, "confluence", "token", cli_value=args.token)
 
-        return cmd_spaces(domain=domain, email=email, token=token) or 0
+            return cmd_spaces(domain=domain, email=email, token=token) or 0
 
-    parser.print_help()
-    return 0
+        parser.print_help()
+        return 0
+
+    except MdToAdfError as e:
+        print(f"Error: {e.message}", file=sys.stderr)
+        if e.hint:
+            print(f"  Hint: {e.hint}", file=sys.stderr)
+        if debug:
+            traceback.print_exc()
+        return 1
+    except Exception as e:
+        print(f"Unexpected error: {e}", file=sys.stderr)
+        if debug:
+            traceback.print_exc()
+        else:
+            print("  Run with --debug for details", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

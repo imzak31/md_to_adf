@@ -4,6 +4,7 @@ import getpass
 import sys
 
 from md_to_adf.cli.config import save_config, DEFAULT_CONFIG, DEFAULT_CONFIG_PATH
+from md_to_adf.cli.errors import MdToAdfError
 
 
 def _prompt(label, default=None, secret=False):
@@ -127,6 +128,10 @@ def run_wizard(token_mode=False, oauth_mode=False):
                 spaces = client.list_spaces()
                 count = len(spaces.get("results", []))
                 print(f"connected ({count} spaces available)")
+        except MdToAdfError as e:
+            print(f"failed ({e.message})")
+            if e.hint:
+                print(f"  Hint: {e.hint}")
         except Exception as e:
             print(f"failed ({e})")
             print("  You can fix settings in ~/.md-to-adf/config.toml")
