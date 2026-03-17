@@ -5,6 +5,8 @@ import time
 import urllib.request
 import urllib.error
 
+from md_to_adf.cli.errors import AuthError, AccessError, NotFoundError, NetworkError
+
 
 class ConfluenceClient:
     """Confluence Cloud API client with v2/v1 fallback and retry."""
@@ -36,7 +38,35 @@ class ConfluenceClient:
                 if e.code == 429 or e.code >= 500:
                     time.sleep(2 ** attempt)
                     continue
+                # Map non-retryable HTTP errors to typed exceptions immediately
+                if e.code == 401:
+                    raise AuthError(
+                        "Authentication failed",
+                        hint="Check your API token at ~/.md-to-adf/config.toml",
+                    ) from e
+                if e.code == 403:
+                    raise AccessError(
+                        "Insufficient permissions",
+                        hint="Verify your token has write access to this space",
+                    ) from e
+                if e.code == 404:
+                    raise NotFoundError(
+                        "Resource not found",
+                        hint="Check the space key or page ID",
+                    ) from e
                 raise
+
+        # Retries exhausted — map retryable errors to typed exceptions
+        if last_error.code == 429:
+            raise NetworkError(
+                "Rate limited by Confluence",
+                hint="Wait a moment and try again",
+            ) from last_error
+        if last_error.code >= 500:
+            raise NetworkError(
+                f"Confluence server error ({last_error.code})",
+                hint="Check status.atlassian.com",
+            ) from last_error
         raise last_error
 
     def _get(self, path):
@@ -49,10 +79,13 @@ class ConfluenceClient:
         return self._request("PUT", path, payload)
 
     def get_space_id(self, space_key):
-        """Get space ID from space key. Raises ValueError if not found."""
+        """Get space ID from space key. Raises NotFoundError if not found."""
         data = self._get(f"/wiki/api/v2/spaces?keys={space_key}")
         if not data.get("results"):
-            raise ValueError(f"Space '{space_key}' not found")
+            raise NotFoundError(
+                f"Space '{space_key}' not found",
+                hint="Check the space key or page ID",
+            )
         return data["results"][0]["id"]
 
     def get_page(self, page_id):
@@ -94,14 +127,41 @@ class ConfluenceClient:
             }
             try:
                 return self._post("/wiki/rest/api/content", v1_payload)
-            except urllib.error.HTTPError as e2:
+            except (urllib.error.HTTPError, Exception) as e2:
+                http_code = getattr(e2, "code", None)
+                if http_code == 401:
+                    raise AuthError(
+                        "Authentication failed",
+                        hint="Check your API token at ~/.md-to-adf/config.toml",
+                    ) from e2
+                if http_code == 403:
+                    raise AccessError(
+                        "Insufficient permissions",
+                        hint="Verify your token has write access to this space",
+                    ) from e2
+                if http_code == 404:
+                    raise NotFoundError(
+                        "Resource not found",
+                        hint="Check the space key or page ID",
+                    ) from e2
+                if http_code == 429:
+                    raise NetworkError(
+                        "Rate limited by Confluence",
+                        hint="Wait a moment and try again",
+                    ) from e2
+                if http_code is not None and http_code >= 500:
+                    raise NetworkError(
+                        f"Confluence server error ({http_code})",
+                        hint="Check status.atlassian.com",
+                    ) from e2
                 try:
-                    v1_error = e2.read().decode()
+                    v1_error = e2.read().decode() if hasattr(e2, "read") else str(e2)
                 except Exception:
                     v1_error = str(e2)
-                raise RuntimeError(
-                    f"Both APIs failed.\n  V2 ({v2_code}): {v2_error}\n  V1 ({e2.code}): {v1_error}"
-                )
+                raise NetworkError(
+                    f"Both APIs failed (v2={v2_code}): {v1_error}",
+                    hint="Check status.atlassian.com",
+                ) from e2
 
     def update_page(self, adf_doc, page_id, title):
         current = self._get(f"/wiki/api/v2/pages/{page_id}")
