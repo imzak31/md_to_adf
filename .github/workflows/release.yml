@@ -42,13 +42,13 @@ jobs:
     needs: pypi
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - name: Update Homebrew formula SHA256
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           URL="https://files.pythonhosted.org/packages/source/m/md-to-adf/md_to_adf-${VERSION}.tar.gz"
-          # Wait for PyPI to propagate
           for i in 1 2 3 4 5; do
             if curl -sfL "$URL" -o /tmp/md_to_adf.tar.gz; then
               break
@@ -59,10 +59,21 @@ jobs:
           SHA=$(shasum -a 256 /tmp/md_to_adf.tar.gz | awk '{print $1}')
           sed -i "s|md_to_adf-.*\.tar\.gz|md_to_adf-${VERSION}.tar.gz|" homebrew/Formula/md-to-adf.rb
           sed -i "0,/sha256 \".*\"/s|sha256 \".*\"|sha256 \"${SHA}\"|" homebrew/Formula/md-to-adf.rb
-      - name: Commit and push formula update
+      - name: Create PR for formula update
         run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          BRANCH="chore/homebrew-${VERSION}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
           git add homebrew/Formula/md-to-adf.rb
-          git diff --cached --quiet || git commit -m "chore: update Homebrew formula for ${GITHUB_REF#refs/tags/}"
-          git push origin HEAD:main
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "chore: update Homebrew formula for ${VERSION}"
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore: update Homebrew formula for ${VERSION}" \
+            --body "Automated PR — updates SHA256 hash for PyPI release ${VERSION}." \
+            --base main \
+            --head "$BRANCH"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
