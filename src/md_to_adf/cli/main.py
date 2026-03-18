@@ -95,13 +95,24 @@ def _build_parser():
     upload_parser.add_argument(
         "input",
         metavar="INPUT",
-        help="Path to the input Markdown file.",
+        help="Path to markdown file, directory, or glob pattern.",
     )
     upload_parser.add_argument(
         "--title",
-        required=True,
+        required=False,
+        default=None,
         metavar="TITLE",
         help="Title for the Confluence page (required).",
+    )
+    upload_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be uploaded without uploading.",
+    )
+    upload_parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Scan directories recursively.",
     )
     upload_parser.add_argument(
         "--domain",
@@ -235,6 +246,7 @@ def main():
 
             return cmd_upload(
                 input_path=args.input,
+                config=config,
                 domain=domain,
                 email=email,
                 token=token,
@@ -243,6 +255,8 @@ def main():
                 parent_id=args.parent_id,
                 page_id=args.page_id,
                 mermaid_strategy=mermaid_strategy,
+                dry_run=args.dry_run,
+                recursive=args.recursive,
             ) or 0
 
         # ── validate ─────────────────────────────────────────────────────────────

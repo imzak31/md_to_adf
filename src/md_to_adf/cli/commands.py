@@ -2,11 +2,18 @@
 
 import json
 import sys
+from pathlib import Path
 
 from md_to_adf.core.parser import convert
 from md_to_adf.core.validator import validate
 from md_to_adf.mermaid import process_mermaid_blocks
-from md_to_adf.cli.errors import ConfigError, NotFoundError
+from md_to_adf.cli.errors import ConfigError, MdToAdfError, NotFoundError
+from md_to_adf.cli.discovery import discover_markdown_files, extract_title
+from md_to_adf.cli.spaces import (
+    format_space_picker,
+    resolve_space_key,
+    update_recent_spaces,
+)
 
 
 def _read_file(path):
@@ -119,6 +126,7 @@ def cmd_validate(input_path, is_adf=False):
 
 def cmd_upload(
     input_path,
+    config,
     domain,
     email,
     token,
@@ -129,40 +137,115 @@ def cmd_upload(
     mermaid_strategy="auto",
     mermaid_format="png",
     mermaid_theme="default",
+    dry_run=False,
+    recursive=False,
 ):
-    """Convert and upload a Markdown file to Confluence."""
-    adf_doc = _convert_md(input_path, mermaid_strategy, mermaid_format, mermaid_theme)
+    """Convert and upload one or more Markdown files to Confluence."""
+    # 1. Discover files
+    files = discover_markdown_files(input_path, recursive=recursive)
+    if not files:
+        raise NotFoundError(
+            f"No markdown files found in '{input_path}'",
+            hint="Check the path or use --recursive",
+        )
 
-    errors = validate(adf_doc)
-    if errors:
-        print("Validation errors found — aborting upload:", file=sys.stderr)
-        for e in errors:
-            print(f"  - {e}", file=sys.stderr)
-        return 1
+    # 2. Validate single-file-only flags
+    if len(files) > 1:
+        if title:
+            raise ConfigError(
+                "--title cannot be used with multiple files",
+                hint="Titles are auto-extracted from each file's H1 heading",
+            )
+        if page_id:
+            raise ConfigError(
+                "--page-id cannot be used with multiple files",
+                hint="Update pages one at a time",
+            )
 
+    # 3. Build file→title mapping
+    file_titles = []
+    for f in files:
+        content = _read_file(f)
+        extracted = title if (title and len(files) == 1) else extract_title(content, f)
+        file_titles.append((f, extracted))
+
+    # 4. Resolve space
     _require_credentials(domain, email, token)
-    if not title:
-        raise ConfigError("Page title is required", hint="Pass --title")
+    resolved_space = resolve_space_key(config, cli_space=space_key)
+    if resolved_space is None:
+        # Interactive space picker
+        choices, keys = format_space_picker(config)
+        if choices:
+            print("\n  Select a space:", file=sys.stderr)
+            for i, c in enumerate(choices):
+                print(f"    {i + 1}) {c}", file=sys.stderr)
+            print(f"    {len(choices) + 1}) Other (enter space key)", file=sys.stderr)
+            raw = input(f"  Choice [1-{len(choices) + 1}]: ").strip()
+            try:
+                idx = int(raw) - 1
+                if 0 <= idx < len(keys):
+                    resolved_space = keys[idx]
+                else:
+                    resolved_space = input("  Space key: ").strip()
+            except ValueError:
+                resolved_space = raw  # treat as space key
+        else:
+            resolved_space = input("  Space key: ").strip()
+        if not resolved_space:
+            raise ConfigError(
+                "Space key is required",
+                hint="Pass --space or configure named spaces",
+            )
 
+    # 5. Dry run
+    if dry_run:
+        print(f"\nDry run — {len(file_titles)} file(s) → space {resolved_space}\n")
+        for f, t in file_titles:
+            print(f"  {Path(f).name:40s} → \"{t}\"")
+        return 0
+
+    # 6. Upload
     client = _build_client(domain, email, token)
+    successes = 0
+    failures = []
 
-    if page_id:
-        result = client.update_page(adf_doc, page_id, title)
-        action = "updated"
-    else:
-        if not space_key:
-            raise ConfigError("Space key is required when creating a new page", hint="Pass --space")
-        result = client.create_page(adf_doc, space_key, title, parent_id=parent_id)
-        action = "created"
+    for f, t in file_titles:
+        try:
+            adf_doc = _convert_md(f, mermaid_strategy, mermaid_format, mermaid_theme)
+            errors = validate(adf_doc)
+            if errors:
+                failures.append((f, f"Validation: {errors[0]}"))
+                continue
 
-    # Prefer the webui link from the API response; fall back to constructed URL
-    web_link = result.get("_links", {}).get("webui", "")
-    if web_link:
-        page_url = f"https://{domain}/wiki{web_link}"
-    else:
-        page_url = f"https://{domain}/wiki/pages/{result.get('id', '')}"
-    print(f"Page {action} successfully: {page_url}")
-    return 0
+            if page_id:
+                result = client.update_page(adf_doc, page_id, t)
+                action = "updated"
+            else:
+                result = client.create_page(adf_doc, resolved_space, t, parent_id=parent_id)
+                action = "created"
+
+            web_link = result.get("_links", {}).get("webui", "")
+            url = f"https://{domain}/wiki{web_link}" if web_link else ""
+            print(f"  ✓ {Path(f).name} → \"{t}\" ({action}) {url}")
+            successes += 1
+        except MdToAdfError as e:
+            failures.append((f, e.message))
+            print(f"  ✗ {Path(f).name} → {e.message}")
+        except Exception as e:
+            failures.append((f, str(e)))
+            print(f"  ✗ {Path(f).name} → {e}")
+
+    # 7. Summary
+    if len(file_titles) > 1:
+        print(f"\nDone: {successes} uploaded, {len(failures)} failed")
+
+    # 8. Update recent spaces
+    if successes > 0:
+        from md_to_adf.cli.config import save_config
+        update_recent_spaces(config, resolved_space)
+        save_config(config)
+
+    return 1 if failures else 0
 
 
 def cmd_spaces(domain, email, token):
