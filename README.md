@@ -63,6 +63,18 @@ export MD_TO_ADF_SPACE=ENG
 md-to-adf upload docs/my-page.md --title "My Page"
 ```
 
+**Upload a directory of markdown files:**
+```bash
+# Upload a directory of markdown files
+md-to-adf upload docs/ --space ENG
+
+# Preview what would be uploaded (dry run)
+md-to-adf upload docs/ --dry-run
+
+# Upload with recursive directory scan
+md-to-adf upload docs/ --recursive --space ENG
+```
+
 ## Setup
 
 Run the interactive wizard to store your Confluence credentials once:
@@ -103,6 +115,8 @@ strategy = "auto"
 | Mermaid | `mermaid.strategy` | `MD_TO_ADF_MERMAID` | `--mermaid` |
 
 **Priority:** CLI flags > env vars > config file > defaults
+
+Use `--debug` on any command to see full error tracebacks.
 
 ## CLI Commands
 
@@ -147,13 +161,15 @@ md-to-adf upload <file> [options]
 
 | Option | Description |
 |--------|-------------|
-| `--title TEXT` | Page title (default: filename stem) |
+| `--title TEXT` | Page title override (optional — auto-extracted from H1) |
 | `--space KEY` | Confluence space key |
 | `--parent ID` | Parent page ID |
 | `--domain HOST` | Confluence domain |
 | `--email EMAIL` | Atlassian account email |
 | `--token TOKEN` | Atlassian API token |
 | `--mermaid STRATEGY` | Mermaid handling strategy |
+| `--dry-run` | Show what would be uploaded without uploading |
+| `--recursive` | Scan directories recursively for .md files |
 
 Examples:
 ```bash
@@ -192,6 +208,43 @@ md-to-adf spaces
 
 Lists all spaces accessible with your configured credentials. Useful for finding space keys.
 
+## Batch Upload
+
+Upload a directory or glob pattern of markdown files in one command:
+
+```bash
+# Upload all markdown files in a directory
+md-to-adf upload docs/ --space ENG
+
+# Use a glob pattern
+md-to-adf upload "docs/*.md" --space ENG
+
+# Preview first, then upload
+md-to-adf upload docs/ --dry-run
+md-to-adf upload docs/ --space ENG
+```
+
+Titles are auto-extracted from each file's first H1 heading. If no H1 is found, the filename is used (e.g., `api-reference.md` becomes "Api Reference").
+
+Failures in batch mode don't stop the upload — each file is processed independently and a summary is printed at the end.
+
+## Named Spaces
+
+Configure frequently-used spaces in `~/.md-to-adf/config.toml` for quick selection:
+
+```toml
+[spaces.eng]
+key = "ENG"
+name = "Engineering"
+parent_id = "12345"    # optional default parent page
+
+[spaces.product]
+key = "PROD"
+name = "Product Docs"
+```
+
+When uploading without `--space`, the tool shows a picker if multiple spaces are configured. Recent spaces are tracked automatically.
+
 ## Mermaid Support
 
 Mermaid diagrams in fenced code blocks (` ```mermaid `) are handled according to the selected strategy:
@@ -210,25 +263,20 @@ md-to-adf upload diagram.md --mermaid image
 
 ## Claude Code Skill
 
-`md-to-adf` ships a Claude Code skill that lets you upload the current file to Confluence from inside your editor with a single slash command.
+`md-to-adf` ships a Claude Code skill for uploading markdown to Confluence directly from your editor.
 
 **Install the skill:**
 ```bash
-# Copy the skill to your Claude Code skills directory
-cp -r /path/to/md-to-adf/skill ~/.claude/skills/md-to-confluence
+curl -sL https://raw.githubusercontent.com/imzak31/md_to_adf/main/skill/md-to-confluence.md \
+  -o ~/.claude/skills/md-to-confluence.md
 ```
 
-Or install via the package (after `pip install md-to-adf`):
-```bash
-md-to-adf-install-skill
-```
-
-**Use the skill inside Claude Code:**
+**Use it:**
 ```
 /md-to-confluence
 ```
 
-The skill reads the current file, calls `md-to-adf upload`, and reports the resulting Confluence URL.
+The skill guides Claude through a preview-first workflow: identify files, dry-run to verify titles and space, then upload.
 
 ## Python Library API
 

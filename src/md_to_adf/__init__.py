@@ -1,6 +1,6 @@
 """md-to-adf: Convert Markdown to Atlassian Document Format (ADF)."""
 
-__version__ = "1.0.1"
+__version__ = "1.1.0"
 
 from md_to_adf.core import convert, validate
 
