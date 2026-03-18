@@ -1,62 +1,64 @@
 ---
 name: md-to-confluence
-description: Convert Markdown files to Atlassian Document Format (ADF) and upload to Confluence
+description: Convert Markdown files to ADF and upload to Confluence
 ---
 
 # Markdown to Confluence
 
-Convert Markdown files (including AI-generated content with Mermaid diagrams) to ADF and upload to Confluence.
+Push Markdown files to Confluence as formatted pages.
 
-## Prerequisites Check
+## Step 1: Check tool availability
 
-First, check if md-to-adf is installed:
+Run: `md-to-adf --version`
 
-```bash
-md-to-adf --version
-```
+If not installed, tell the user:
+- pip: `pip install md-to-adf`
+- brew: `brew tap imzak31/md-to-adf && brew install md-to-adf`
+- npm: `npm install -g md2adf`
 
-If not installed, guide the user:
-```bash
-pip install md-to-adf
-md-to-adf init
-```
+Then run: `md-to-adf init` to configure credentials.
 
-## Workflow
+## Step 2: Identify the target file(s)
 
-1. **Identify the target file(s)** — ask the user which markdown file(s) to push, or detect from context
-2. **Check configuration** — verify `~/.md-to-adf/config.toml` exists via `md-to-adf spaces` (validates connection)
-3. **Preview** — optionally show the user what will be converted: `md-to-adf convert <file> --validate`
-4. **Get page details** — ask for:
-   - Title (suggest one based on the markdown content)
-   - Space key (use default from config if set)
-   - New page or update existing (if updating, need page ID or URL)
-   - Parent page (optional)
-5. **Upload** — run the upload command:
-   ```bash
-   md-to-adf upload <file> --title "Page Title" --space <KEY>
-   ```
-6. **Report** — show the URL of the created/updated page
+Ask the user which markdown file(s) to push. They will typically
+reference files with @ — filter suggestions to .md files only.
 
-## Batch Mode
+If no file is specified, suggest scanning the current directory:
+`md-to-adf upload . --dry-run`
 
-For multiple files:
-```bash
-for f in docs/*.md; do
-  title=$(head -1 "$f" | sed 's/^#\+ //')
-  md-to-adf upload "$f" --title "$title" --space <KEY>
-done
-```
+## Step 3: Preview before uploading
 
-## Convert Only (No Upload)
+Run: `md-to-adf upload <file-or-dir> --dry-run`
 
-```bash
-md-to-adf convert <file> -o <output.adf.json>
-md-to-adf convert <file> --validate
-```
+This shows the extracted title and target space without uploading.
+Confirm with the user that the title and space look correct.
 
-## Tips
+## Step 4: Upload
 
-- Claude can help edit/improve the markdown before converting
-- Use `--mermaid auto` (default) for best diagram handling
-- Use `md-to-adf validate` to check ADF output before uploading
-- The tool reads config from `~/.md-to-adf/config.toml` — run `md-to-adf init` to set up
+For a single file:
+`md-to-adf upload <file>`
+
+For multiple files or a directory:
+`md-to-adf upload <dir-or-glob>`
+
+If the user needs a specific space, add `--space <KEY>`.
+If updating an existing page, add `--page-id <ID>`.
+To override the auto-extracted title: `--title "Custom Title"` (single file only).
+
+## Step 5: Report
+
+Show the Confluence URL from the output.
+If batch mode, summarize successes and failures.
+
+## Key behaviors
+
+- Title is auto-extracted from the first H1 heading, or the filename.
+  Only suggest --title if the user wants to override.
+- Space is auto-selected from config. Only ask if multiple spaces
+  are configured and the user hasn't specified one.
+- Always use --dry-run first when the user seems uncertain.
+- If upload fails, the error message includes a hint. Read it
+  and suggest the fix before retrying.
+- For batch uploads of many files, show the --dry-run output first
+  so the user can review titles before committing.
+- Use --recursive to include markdown files in subdirectories.
